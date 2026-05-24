@@ -47,6 +47,10 @@ import os, sys
 # More than 12 filesystem blocks for 2K/4K block sizes, so indirect addressing is used.
 sys.stdout.buffer.write(os.urandom(256 * 1024))
 PY
+truncate -s 16M "$MNT/sparse_checksum.bin"
+printf 'BEGIN-SPARSE-CHECKSUM\n' | dd of="$MNT/sparse_checksum.bin" bs=1 seek=0 conv=notrunc status=none
+printf 'MIDDLE-SPARSE-CHECKSUM\n' | dd of="$MNT/sparse_checksum.bin" bs=1 seek=$((8*1024*1024 + 123)) conv=notrunc status=none
+printf 'END-SPARSE-CHECKSUM\n' | dd of="$MNT/sparse_checksum.bin" bs=1 seek=$((16*1024*1024 - 4096)) conv=notrunc status=none
 truncate -s 5G "$MNT/sparse_5g.bin"
 printf 'BEGIN-SPARSE\n' | dd of="$MNT/sparse_5g.bin" bs=1 seek=0 conv=notrunc status=none
 printf 'END-SPARSE\n' | dd of="$MNT/sparse_5g.bin" bs=1 seek=$((5*1024*1024*1024 - 4096)) conv=notrunc status=none
@@ -57,7 +61,7 @@ sync
 
 {
   printf 'path\tinode\ttype\tsha512\n'
-  for p in small.txt indirect.bin dir_a dir_a/dir_b dir_c link_to_small dir_a/dir_b/nested.txt dir_c/another.txt; do
+  for p in small.txt indirect.bin sparse_checksum.bin dir_a dir_a/dir_b dir_c link_to_small dir_a/dir_b/nested.txt dir_c/another.txt; do
     inode=$(stat -c '%i' "$MNT/$p")
     type=$(stat -c '%F' "$MNT/$p")
     if [[ -f "$MNT/$p" ]]; then
@@ -82,7 +86,7 @@ mounted=0
 get_ino() { awk -F '\t' -v p="$1" 'NR > 1 && $1 == p {print $2}' "$WORK/inodes.tsv"; }
 get_hash() { awk -F '\t' -v p="$1" 'NR > 1 && $1 == p {print $4}' "$WORK/inodes.tsv"; }
 
-for p in small.txt indirect.bin dir_a/dir_b/nested.txt dir_c/another.txt; do
+for p in small.txt indirect.bin sparse_checksum.bin dir_a/dir_b/nested.txt dir_c/another.txt; do
   ino=$(get_ino "$p")
   "${VG[@]}" ./ext2_inode_info "$IMAGE" "$ino" > "$WORK/info-${p//\//_}.txt"
   "${VG[@]}" ./ext2_cat_inode "$IMAGE" "$ino" > "$WORK/out-${p//\//_}"

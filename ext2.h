@@ -9,6 +9,12 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define EXT2_PACKED __attribute__((__packed__))
+#else
+#define EXT2_PACKED
+#endif
+
 #if !defined(__BYTE_ORDER__) || !defined(__ORDER_LITTLE_ENDIAN__) || !defined(__ORDER_BIG_ENDIAN__)
 #error "Cannot determine host byte order at compile time"
 #endif
@@ -42,6 +48,79 @@
 
 #define EXT2_FEATURE_INCOMPAT_FILETYPE 0x0002U
 #define EXT2_FEATURE_RO_COMPAT_LARGE_FILE 0x0002U
+
+typedef struct EXT2_PACKED ext2_superblock_disk {
+    uint32_t inodes_count;
+    uint32_t blocks_count;
+    uint32_t reserved_blocks_count;
+    uint32_t free_blocks_count;
+    uint32_t free_inodes_count;
+    uint32_t first_data_block;
+    uint32_t log_block_size;
+    uint32_t log_frag_size;
+    uint32_t blocks_per_group;
+    uint32_t frags_per_group;
+    uint32_t inodes_per_group;
+    uint32_t mtime;
+    uint32_t wtime;
+    uint16_t mnt_count;
+    uint16_t max_mnt_count;
+    uint16_t magic;
+    uint16_t state;
+    uint16_t errors;
+    uint16_t minor_rev_level;
+    uint32_t lastcheck;
+    uint32_t checkinterval;
+    uint32_t creator_os;
+    uint32_t rev_level;
+    uint16_t def_resuid;
+    uint16_t def_resgid;
+    uint32_t first_ino;
+    uint16_t inode_size;
+    uint16_t block_group_nr;
+    uint32_t feature_compat;
+    uint32_t feature_incompat;
+    uint32_t feature_ro_compat;
+    uint8_t uuid[16];
+    char volume_name[16];
+    uint8_t unused[888];
+} ext2_superblock_disk_t;
+
+typedef struct EXT2_PACKED ext2_group_desc_disk {
+    uint32_t block_bitmap;
+    uint32_t inode_bitmap;
+    uint32_t inode_table;
+    uint16_t free_blocks_count;
+    uint16_t free_inodes_count;
+    uint16_t used_dirs_count;
+    uint16_t pad;
+    uint32_t reserved[3];
+} ext2_group_desc_disk_t;
+
+typedef struct EXT2_PACKED ext2_inode_disk {
+    uint16_t mode;
+    uint16_t uid;
+    uint32_t size_lo;
+    uint32_t atime;
+    uint32_t ctime;
+    uint32_t mtime;
+    uint32_t dtime;
+    uint16_t gid;
+    uint16_t links_count;
+    uint32_t blocks_512;
+    uint32_t flags;
+    uint32_t osd1;
+    uint8_t i_block[60];
+    uint32_t generation;
+    uint32_t file_acl;
+    uint32_t dir_acl_or_size_high;
+    uint32_t faddr;
+    uint8_t osd2[12];
+} ext2_inode_disk_t;
+
+_Static_assert(sizeof(ext2_superblock_disk_t) == EXT2_SUPERBLOCK_SIZE, "unexpected ext2 superblock layout");
+_Static_assert(sizeof(ext2_group_desc_disk_t) == 32U, "unexpected ext2 group descriptor layout");
+_Static_assert(sizeof(ext2_inode_disk_t) == 128U, "unexpected ext2 inode layout");
 
 typedef struct ext2_fs {
     int fd;

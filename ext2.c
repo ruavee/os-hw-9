@@ -71,9 +71,9 @@ static uint32_t ceil_div_u32(uint32_t a, uint32_t b)
     return (a + b - 1U) / b;
 }
 
-static int parse_superblock(ext2_fs_t *fs, const uint8_t sb[EXT2_SUPERBLOCK_SIZE])
+static int parse_superblock(ext2_fs_t *fs, const ext2_superblock_disk_t *sb)
 {
-    uint16_t magic = ext2_get_le16(sb + 56);
+    uint16_t magic = ext2_le16_to_cpu(sb->magic);
     uint32_t groups_by_blocks;
     uint32_t groups_by_inodes;
 
@@ -82,13 +82,13 @@ static int parse_superblock(ext2_fs_t *fs, const uint8_t sb[EXT2_SUPERBLOCK_SIZE
         return -1;
     }
 
-    fs->inodes_count = ext2_get_le32(sb + 0);
-    fs->blocks_count = ext2_get_le32(sb + 4);
-    fs->first_data_block = ext2_get_le32(sb + 20);
-    fs->log_block_size = ext2_get_le32(sb + 24);
-    fs->blocks_per_group = ext2_get_le32(sb + 32);
-    fs->inodes_per_group = ext2_get_le32(sb + 40);
-    fs->rev_level = ext2_get_le32(sb + 76);
+    fs->inodes_count = ext2_le32_to_cpu(sb->inodes_count);
+    fs->blocks_count = ext2_le32_to_cpu(sb->blocks_count);
+    fs->first_data_block = ext2_le32_to_cpu(sb->first_data_block);
+    fs->log_block_size = ext2_le32_to_cpu(sb->log_block_size);
+    fs->blocks_per_group = ext2_le32_to_cpu(sb->blocks_per_group);
+    fs->inodes_per_group = ext2_le32_to_cpu(sb->inodes_per_group);
+    fs->rev_level = ext2_le32_to_cpu(sb->rev_level);
     fs->first_ino = 11;
     fs->inode_size = 128;
     fs->feature_compat = 0;
@@ -97,12 +97,12 @@ static int parse_superblock(ext2_fs_t *fs, const uint8_t sb[EXT2_SUPERBLOCK_SIZE
     memset(fs->volume_name, 0, sizeof(fs->volume_name));
 
     if (fs->rev_level >= 1U) {
-        fs->first_ino = ext2_get_le32(sb + 84);
-        fs->inode_size = ext2_get_le16(sb + 88);
-        fs->feature_compat = ext2_get_le32(sb + 92);
-        fs->feature_incompat = ext2_get_le32(sb + 96);
-        fs->feature_ro_compat = ext2_get_le32(sb + 100);
-        memcpy(fs->volume_name, sb + 120, 16);
+        fs->first_ino = ext2_le32_to_cpu(sb->first_ino);
+        fs->inode_size = ext2_le16_to_cpu(sb->inode_size);
+        fs->feature_compat = ext2_le32_to_cpu(sb->feature_compat);
+        fs->feature_incompat = ext2_le32_to_cpu(sb->feature_incompat);
+        fs->feature_ro_compat = ext2_le32_to_cpu(sb->feature_ro_compat);
+        memcpy(fs->volume_name, sb->volume_name, sizeof(sb->volume_name));
         fs->volume_name[16] = '\0';
     }
 
@@ -153,7 +153,7 @@ int ext2_read_exact_at(const ext2_fs_t *fs, void *buf, size_t size, uint64_t off
 
 int ext2_open(ext2_fs_t *fs, const char *path)
 {
-    uint8_t sb[EXT2_SUPERBLOCK_SIZE];
+    ext2_superblock_disk_t sb;
 
     memset(fs, 0, sizeof(*fs));
     fs->fd = -1;
@@ -167,12 +167,12 @@ int ext2_open(ext2_fs_t *fs, const char *path)
         return -1;
     }
 
-    if (ext2_read_exact_at(fs, sb, sizeof(sb), EXT2_SUPERBLOCK_OFFSET) == -1) {
+    if (ext2_read_exact_at(fs, &sb, sizeof(sb), EXT2_SUPERBLOCK_OFFSET) == -1) {
         ext2_close(fs);
         return -1;
     }
 
-    if (parse_superblock(fs, sb) == -1) {
+    if (parse_superblock(fs, &sb) == -1) {
         ext2_close(fs);
         return -1;
     }
@@ -192,7 +192,7 @@ void ext2_close(ext2_fs_t *fs)
 
 int ext2_read_group_desc(const ext2_fs_t *fs, uint32_t group, ext2_group_desc_t *gd)
 {
-    uint8_t raw[32];
+    ext2_group_desc_disk_t raw;
     uint64_t off;
 
     if (group >= fs->group_count) {
@@ -201,14 +201,14 @@ int ext2_read_group_desc(const ext2_fs_t *fs, uint32_t group, ext2_group_desc_t 
     }
 
     off = fs->gdt_offset + (uint64_t)group * 32ULL;
-    if (ext2_read_exact_at(fs, raw, sizeof(raw), off) == -1) return -1;
+    if (ext2_read_exact_at(fs, &raw, sizeof(raw), off) == -1) return -1;
 
-    gd->block_bitmap = ext2_get_le32(raw + 0);
-    gd->inode_bitmap = ext2_get_le32(raw + 4);
-    gd->inode_table = ext2_get_le32(raw + 8);
-    gd->free_blocks_count = ext2_get_le16(raw + 12);
-    gd->free_inodes_count = ext2_get_le16(raw + 14);
-    gd->used_dirs_count = ext2_get_le16(raw + 16);
+    gd->block_bitmap = ext2_le32_to_cpu(raw.block_bitmap);
+    gd->inode_bitmap = ext2_le32_to_cpu(raw.inode_bitmap);
+    gd->inode_table = ext2_le32_to_cpu(raw.inode_table);
+    gd->free_blocks_count = ext2_le16_to_cpu(raw.free_blocks_count);
+    gd->free_inodes_count = ext2_le16_to_cpu(raw.free_inodes_count);
+    gd->used_dirs_count = ext2_le16_to_cpu(raw.used_dirs_count);
     return 0;
 }
 
@@ -217,7 +217,7 @@ int ext2_read_inode(const ext2_fs_t *fs, uint32_t ino, ext2_inode_t *inode)
     uint32_t group;
     uint32_t index;
     uint64_t inode_offset;
-    uint8_t *raw;
+    ext2_inode_disk_t *raw;
     ext2_group_desc_t gd;
     size_t i;
 
@@ -241,25 +241,25 @@ int ext2_read_inode(const ext2_fs_t *fs, uint32_t ino, ext2_inode_t *inode)
     }
 
     memset(inode, 0, sizeof(*inode));
-    inode->mode = ext2_get_le16(raw + 0);
-    inode->uid = ext2_get_le16(raw + 2);
-    inode->size_lo = ext2_get_le32(raw + 4);
-    inode->atime = ext2_get_le32(raw + 8);
-    inode->ctime = ext2_get_le32(raw + 12);
-    inode->mtime = ext2_get_le32(raw + 16);
-    inode->dtime = ext2_get_le32(raw + 20);
-    inode->gid = ext2_get_le16(raw + 24);
-    inode->links_count = ext2_get_le16(raw + 26);
-    inode->blocks_512 = ext2_get_le32(raw + 28);
-    inode->flags = ext2_get_le32(raw + 32);
-    inode->osd1 = ext2_get_le32(raw + 36);
-    memcpy(inode->raw_i_block, raw + 40, sizeof(inode->raw_i_block));
+    inode->mode = ext2_le16_to_cpu(raw->mode);
+    inode->uid = ext2_le16_to_cpu(raw->uid);
+    inode->size_lo = ext2_le32_to_cpu(raw->size_lo);
+    inode->atime = ext2_le32_to_cpu(raw->atime);
+    inode->ctime = ext2_le32_to_cpu(raw->ctime);
+    inode->mtime = ext2_le32_to_cpu(raw->mtime);
+    inode->dtime = ext2_le32_to_cpu(raw->dtime);
+    inode->gid = ext2_le16_to_cpu(raw->gid);
+    inode->links_count = ext2_le16_to_cpu(raw->links_count);
+    inode->blocks_512 = ext2_le32_to_cpu(raw->blocks_512);
+    inode->flags = ext2_le32_to_cpu(raw->flags);
+    inode->osd1 = ext2_le32_to_cpu(raw->osd1);
+    memcpy(inode->raw_i_block, raw->i_block, sizeof(inode->raw_i_block));
     for (i = 0; i < EXT2_N_BLOCKS; i++)
-        inode->block[i] = ext2_get_le32(raw + 40 + i * 4U);
-    inode->generation = ext2_get_le32(raw + 100);
-    inode->file_acl = ext2_get_le32(raw + 104);
-    inode->dir_acl_or_size_high = ext2_get_le32(raw + 108);
-    inode->faddr = ext2_get_le32(raw + 112);
+        inode->block[i] = ext2_get_le32(raw->i_block + i * 4U);
+    inode->generation = ext2_le32_to_cpu(raw->generation);
+    inode->file_acl = ext2_le32_to_cpu(raw->file_acl);
+    inode->dir_acl_or_size_high = ext2_le32_to_cpu(raw->dir_acl_or_size_high);
+    inode->faddr = ext2_le32_to_cpu(raw->faddr);
 
     free(raw);
     return 0;
